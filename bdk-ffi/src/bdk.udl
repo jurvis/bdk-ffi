@@ -364,5 +364,5 @@ interface Descriptor {
   [Name=new_bip86_public]
   constructor(DescriptorPublicKey public_key, string? fingerprint, KeychainKind keychain);
 
-  string to_string();
+  string as_string();
 };

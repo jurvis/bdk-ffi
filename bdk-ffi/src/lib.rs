@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use bdk::bitcoin::blockdata::script::Script as BdkScript;
 use bdk::bitcoin::hashes::hex::ToHex;
 use bdk::bitcoin::secp256k1::Secp256k1;
@@ -15,12 +16,9 @@ use bdk::blockchain::{
 use bdk::blockchain::{Blockchain as BdkBlockchain, Progress as BdkProgress};
 use bdk::database::any::{AnyDatabase, SledDbConfiguration, SqliteDbConfiguration};
 use bdk::database::{AnyDatabaseConfig, ConfigurableDatabase};
-use bdk::descriptor::DescriptorXKey;
+use bdk::descriptor::{DescriptorXKey, IntoWalletDescriptor};
 use bdk::keys::bip39::{Language, Mnemonic as BdkMnemonic, WordCount};
-use bdk::keys::{
-    DerivableKey, DescriptorPublicKey as BdkDescriptorPublicKey,
-    DescriptorSecretKey as BdkDescriptorSecretKey, ExtendedKey, GeneratableKey, GeneratedKey,
-};
+use bdk::keys::{DerivableKey, DescriptorPublicKey as BdkDescriptorPublicKey, DescriptorSecretKey as BdkDescriptorSecretKey, ExtendedKey, GeneratableKey, GeneratedKey, IntoDescriptorKey, KeyMap};
 use bdk::miniscript::BareCtx;
 use bdk::psbt::PsbtUtils;
 use bdk::wallet::tx_builder::ChangeSpendPolicy;
@@ -36,6 +34,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard};
+use bdk::template::{Bip44, DescriptorTemplate, DescriptorTemplateOut};
 
 uniffi_macros::include_scaffolding!("bdk");
 
@@ -227,10 +226,6 @@ impl Blockchain {
     }
 }
 
-struct Wallet {
-    wallet_mutex: Mutex<BdkWallet<AnyDatabase>>,
-}
-
 /// A reference to a transaction output.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OutPoint {
@@ -405,6 +400,11 @@ impl PartiallySignedTransaction {
     fn fee_rate(&self) -> Option<Arc<FeeRate>> {
         self.internal.lock().unwrap().fee_rate().map(Arc::new)
     }
+}
+
+
+struct Wallet {
+    wallet_mutex: Mutex<BdkWallet<AnyDatabase>>,
 }
 
 /// A Bitcoin wallet.
@@ -1025,6 +1025,38 @@ impl DescriptorSecretKey {
     }
 }
 
+#[derive(Debug)]
+struct DescriptorPR260 {
+    pub descriptor: DescriptorTemplateOut,
+}
+
+impl DescriptorPR260 {
+    fn new_bip44(secret_key: DescriptorSecretKey, keychain_kind: KeychainKind, network: Network) -> Self {
+        let derivable_key = secret_key.descriptor_secret_key_mutex.lock().unwrap();
+        match derivable_key.deref() {
+            BdkDescriptorSecretKey::XPrv(descriptor_x_key) => {
+                let derivable_key = descriptor_x_key.xkey;
+                let descriptor_template_out = Bip44(derivable_key, keychain_kind).build(network).unwrap();
+                Self {
+                    descriptor: descriptor_template_out
+                }
+            }
+            BdkDescriptorSecretKey::Single(_) => {
+                unreachable!()
+            }
+        }
+    }
+
+    // Note that DescriptorTemplateOut is a type alias for (ExtendedDescriptor, KeyMap, ValidNetworks)
+    // And ExtendedDescriptor is a type alias for Descriptor<DescriptorPublicKey>
+    // So the following only ever prints the xpub
+    // I'm not sure how to best retrieve a "clean" string for the private descriptor
+    // The kind we could return to the user so they can save it
+    fn as_string(&self) -> String {
+        self.descriptor.0.to_string()
+    }
+}
+
 struct DescriptorPublicKey {
     descriptor_public_key_mutex: Mutex<BdkDescriptorPublicKey>,
 }
@@ -1289,5 +1321,13 @@ mod test {
 
         assert!(tx_builder_result.psbt.fee_amount().is_some());
         assert_eq!(tx_builder_result.psbt.fee_amount().unwrap(), 220);
+    }
+
+    #[test]
+    fn test_descriptor_template() {
+        let master_dsk: DescriptorSecretKey = get_descriptor_secret_key();
+        let bip44_descriptor = DescriptorPR260::new_bip44(master_dsk, KeychainKind::External, Network::Testnet);
+        println!("{:?}", bip44_descriptor);
+        println!("{}", bip44_descriptor.as_string());
     }
 }
