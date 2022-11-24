@@ -13,6 +13,7 @@ use bdk::blockchain::GetHeight;
 use bdk::blockchain::{
     electrum::ElectrumBlockchainConfig, esplora::EsploraBlockchainConfig, ConfigurableBlockchain,
 };
+use bdk::descriptor::Descriptor as BdkDescriptor;
 use bdk::blockchain::{Blockchain as BdkBlockchain, Progress as BdkProgress};
 use bdk::database::any::{AnyDatabase, SledDbConfiguration, SqliteDbConfiguration};
 use bdk::database::{AnyDatabaseConfig, ConfigurableDatabase};
@@ -34,7 +35,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard};
-use bdk::template::{Bip44, DescriptorTemplate, DescriptorTemplateOut};
+use bdk::template::{Bip44, Bip44Public, Bip49, Bip84, DescriptorTemplate, DescriptorTemplateOut};
 
 uniffi_macros::include_scaffolding!("bdk");
 
@@ -1026,11 +1027,11 @@ impl DescriptorSecretKey {
 }
 
 #[derive(Debug)]
-struct DescriptorPR260 {
+struct Descriptor {
     pub descriptor: DescriptorTemplateOut,
 }
 
-impl DescriptorPR260 {
+impl Descriptor {
     fn new_bip44(secret_key: DescriptorSecretKey, keychain_kind: KeychainKind, network: Network) -> Self {
         let derivable_key = secret_key.descriptor_secret_key_mutex.lock().unwrap();
         match derivable_key.deref() {
@@ -1047,12 +1048,61 @@ impl DescriptorPR260 {
         }
     }
 
-    // Note that DescriptorTemplateOut is a type alias for (ExtendedDescriptor, KeyMap, ValidNetworks)
-    // And ExtendedDescriptor is a type alias for Descriptor<DescriptorPublicKey>
-    // So the following only ever prints the xpub
-    // I'm not sure how to best retrieve a "clean" string for the private descriptor
-    // The kind we could return to the user so they can save it
-    fn as_string(&self) -> String {
+    // fn new_bip44_public(secret_key: DescriptorSecretKey, fingerprint: [u8; 4], keychain_kind: KeychainKind, network: Network) -> Self {
+    //     let derivable_key = secret_key.descriptor_secret_key_mutex.lock().unwrap();
+    //     match derivable_key.deref() {
+    //         BdkDescriptorSecretKey::XPrv(descriptor_x_key) => {
+    //             let derivable_key = descriptor_x_key.xkey;
+    //             let descriptor_template_out = Bip44Public(derivable_key, fingerprint, keychain_kind).build(network).unwrap();
+    //             Self {
+    //                 descriptor: descriptor_template_out
+    //             }
+    //         }
+    //         BdkDescriptorSecretKey::Single(_) => {
+    //             unreachable!()
+    //         }
+    //     }
+    // }
+
+    fn new_bip49(secret_key: DescriptorSecretKey, keychain_kind: KeychainKind, network: Network) -> Self {
+        let derivable_key = secret_key.descriptor_secret_key_mutex.lock().unwrap();
+        match derivable_key.deref() {
+            BdkDescriptorSecretKey::XPrv(descriptor_x_key) => {
+                let derivable_key = descriptor_x_key.xkey;
+                let descriptor_template_out = Bip49(derivable_key, keychain_kind).build(network).unwrap();
+                Self {
+                    descriptor: descriptor_template_out
+                }
+            }
+            BdkDescriptorSecretKey::Single(_) => {
+                unreachable!()
+            }
+        }
+    }
+
+    fn new_bip84(secret_key: DescriptorSecretKey, keychain_kind: KeychainKind, network: Network) -> Self {
+        let derivable_key = secret_key.descriptor_secret_key_mutex.lock().unwrap();
+        match derivable_key.deref() {
+            BdkDescriptorSecretKey::XPrv(descriptor_x_key) => {
+                let derivable_key = descriptor_x_key.xkey;
+                let descriptor_template_out = Bip84(derivable_key, keychain_kind).build(network).unwrap();
+                Self {
+                    descriptor: descriptor_template_out
+                }
+            }
+            BdkDescriptorSecretKey::Single(_) => {
+                unreachable!()
+            }
+        }
+    }
+
+    fn as_string_private(&self) -> String {
+        let descriptor = &self.descriptor.0;
+        let key_map = &self.descriptor.1;
+        descriptor.to_string_with_secret(key_map)
+    }
+
+    fn as_string_public(&self) -> String {
         self.descriptor.0.to_string()
     }
 }
@@ -1325,9 +1375,20 @@ mod test {
 
     #[test]
     fn test_descriptor_template() {
-        let master_dsk: DescriptorSecretKey = get_descriptor_secret_key();
-        let bip44_descriptor = DescriptorPR260::new_bip44(master_dsk, KeychainKind::External, Network::Testnet);
-        println!("{:?}", bip44_descriptor);
+        let master_dsk0: DescriptorSecretKey = get_descriptor_secret_key();
+        let master_dsk1: DescriptorSecretKey = get_descriptor_secret_key();
+        let master_dsk2: DescriptorSecretKey = get_descriptor_secret_key();
+
+        let bip44_descriptor = Descriptor::new_bip44(master_dsk0, KeychainKind::External, Network::Testnet);
+        let bip49_descriptor = Descriptor::new_bip49(master_dsk1, KeychainKind::External, Network::Testnet);
+        let bip84_descriptor = Descriptor::new_bip84(master_dsk2, KeychainKind::External, Network::Testnet);
+
         println!("{}", bip44_descriptor.as_string());
+        println!("{}", bip49_descriptor.as_string());
+        println!("{}", bip84_descriptor.as_string());
+
+        println!("{}", bip44_descriptor.as_string_public());
+        println!("{}", bip49_descriptor.as_string_public());
+        println!("{}", bip84_descriptor.as_string_public());
     }
 }
