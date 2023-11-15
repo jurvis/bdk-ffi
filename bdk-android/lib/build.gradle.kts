@@ -57,6 +57,18 @@ dependencies {
     androidTestImplementation("org.jetbrains.kotlin:kotlin-test-junit:1.6.10")
 }
 
+// This block ensures that the tests that require access to a blockchain are not
+// run if the -P excludeConnectedTests flag is passed to Gradle.
+// This ensures our CI runs are not fickle by not requiring access to testnet.
+// This is a workaround until we have a proper regtest setup for the CI.
+// Note that the command in the CI is ./gradlew connectedAndroidTest -P excludeConnectedTests
+tasks.withType(com.android.build.gradle.tasks.factory.AndroidUnitTest).configureEach {
+    if (project.hasProperty("excludeConnectedTests")) {
+        exclude("**/LiveWalletTest.class")
+        exclude("**/LiveTxBuilderTest.class")
+    }
+}
+
 afterEvaluate {
     publishing {
         publications {
