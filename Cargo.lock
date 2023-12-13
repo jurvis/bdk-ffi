@@ -170,7 +170,7 @@ dependencies = [
 [[package]]
 name = "bdk"
 version = "0.28.0"
-source = "git+https://github.com/jurvis/bdk.git?branch=log-electrum-call-count#e4731c3189474e17a66c9ad917dd22e7a61e9090"
+source = "git+https://github.com/jurvis/bdk.git?branch=log-electrum-call-count-2#641f1166353e36d376b229d90c94d7cef6da5605"
 dependencies = [
  "ahash 0.7.7",
  "async-trait",
