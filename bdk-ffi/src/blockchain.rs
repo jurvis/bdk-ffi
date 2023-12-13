@@ -80,6 +80,11 @@ impl Blockchain {
             .get_block_hash(u64::from(height))
             .map(|hash| hash.to_string())
     }
+
+    pub(crate) fn get_electrum_calls_count(&self) -> u64 {
+        self.get_blockchain()
+            .get_total_calls() as u64
+    }
 }
 
 /// Configuration for an ElectrumBlockchain

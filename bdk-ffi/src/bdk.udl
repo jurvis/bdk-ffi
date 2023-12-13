@@ -177,6 +177,8 @@ interface Blockchain {
 
   [Throws=BdkError]
   string get_block_hash(u32 height);
+
+  u64 get_electrum_calls_count();
 };
 
 callback interface Progress {
